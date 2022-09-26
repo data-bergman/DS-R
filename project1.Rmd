@@ -1,0 +1,351 @@
+---
+title: "MATH70076 Data Science"
+author: "Erwan Delorme"
+date: 'Submission Deadline:  Friday, February 4, 2022 by 5 PM'
+output:
+  pdf_document: default
+subtitle: Coursework 1 (Weight 30%)
+---
+
+***Instructions***: 
+
++ Download and use Coursework_1.Rmd file as the template for your submission. If you prefer using Python, you can use the Jupyter Notebook Coursework_1_Python.ipynb as the template for your submission.
++ Upload the knitted or downloaded HTML/PDF from the .Rmd/Jupyter file to the Coursework 1 Turnitin assignment on Blackboard. The last submission will be considered the final one and previous submissions will be over-written. Avoid last minute uploads.
++ Additionally, upload the .Rmd `R` Markdown file or Jupyter notebook to the Coursework 1 assignment (non Turnitin one). 
++ Writing Code: Use either
+[Google's](https://google.github.io/styleguide/Rguide.xml)
+or
+[Hadley Wickham's](http://adv-r.had.co.nz/Style.html)
+style guide for your code. Use functionals instead of loops when possible (refer to [Hadley Wickham](http://adv-r.had.co.nz/Functionals.html)). 
+As Bjarne Stroustrup once said: "To become significantly more reliable, code must become more transparent. In particular, nested conditions and loops must be viewed with great suspicion. Complicated control flows confuse programmers. Messy code often hides bugs." 
++ Add comments to your code. Your code should be self-explanatory and efficient. Points will be deducted for untidy code. Points will also be deducted for illegible graphics/plots that don't have appropriate captions and labels.
++ As this is assessed work you need to work on it INDIVIDUALLY. It must be your own and unaided work. You are not allowed to discuss the assessed coursework with your fellow students or anybody else. All rules regarding academic integrity and plagiarism apply. Violations of this will be treated as an examination offence. In particular, letting somebody else copy your work constitutes an examination offence.
++ DO NOT post questions about the coursework on Ed Discussion forum. EMAIL me your questions. If something comes up (for example an edit), I will post it on BB Announcements. So, keep an eye on the BB page and on your email during the time-limited assessment.
+
+
+```{r, include=FALSE}
+
+#KEEP THIS CODE CHUNK AT THE TOP OF YOUR DOCUMENT:
+###########################
+# DEFAULT SETTINGS
+###########################
+
+knitr::opts_chunk$set(message = FALSE) # include this if you don't want markdown to knit messages
+knitr::opts_chunk$set(warning = FALSE) # include this if you don't want markdown to knit warnings
+
+###########################
+# LIBRARIES
+###########################
+
+library(tidyverse)
+library(httr)
+library(pander)
+library(ggplot2)
+```
+
+***
+
+For this coursework you will access data provided by the Water Quality Archive (\url{https://www.api.gov.uk/ea/water-quality/#water-quality}), which provides data on water quality measurements carried out by the UK Environment Agency, via API calls. The archive provides data on `samples` that are taken from `sampling points` around the country and then analysed by laboratories to measure aspects of the water quality or the environment at the sampling point. The archive provides data on these `measurements` and `samples` dating from 2000 to present day. It contains 58 million measurements on nearly 4 million samples from 58 thousand sampling points.
+
+The documentation for the Water Quality Archive is here: \url{https://environment.data.gov.uk/water-quality/view/doc/reference#api-requests}
+
+Note that the documentation for this API is not comprehensive and is example-based. This
+means that you might need to do some reverse engineering to understand how the API calls
+work. This is common in publicly available APIs. You do not need to register for an API key.
+
+# Problem 1 (35 points)
+
+
+## Part A (15 points)
+Write a function, `get_SamplingPoints`, with the following specification: 
+
+```{r}
+get_SamplingPoints <- function(latitude = NULL, longitude = NULL){
+  if(!is.numeric(latitude)) stop('latitude argument required')
+  if(!is.numeric(longitude)) stop('longitude argument required')
+  
+  if(abs(latitude) > 90) stop('latitude modulus too large')
+  if(abs(longitude) > 180) stop('longitude modulus too large')
+  
+  url=paste0('http://environment.data.gov.uk/water-quality/id/sampling-point?lat=',latitude,'&long=',longitude,'&dist=3&_limit=100000')
+  
+  response = url %>% GET() 
+  cont = response %>% content()
+  sample_size = length(content(response)$items)
+  
+  
+  if(sample_size == 0) return(NULL)
+  
+  IDSamplePoints = sapply(1: sample_size , function(x) {return(c(
+    cont$items[[x]]$label,
+    cont$items[[x]]$notation
+    ))}
+  ) %>% t()
+  
+  nSamples = data.frame(matrix(0, nrow = sample_size, ncol = 11))
+  colnames(nSamples) = c(2000:2010)
+  for (i in 1:sample_size){
+    response_i = GET(paste0("http://environment.data.gov.uk/water-quality/id/sampling-point/",
+                          IDSamplePoints[i,2],
+                          "/countSamples?_limit=1000"))
+    nSamplesByYear = sapply(1:length(content(response_i)$items),
+                              function(x){
+                                return(c(content(response_i)$items[[x]]$year,
+                                         content(response_i)$items[[x]]$nSamples))
+                              })
+
+    YearsInList = which(2000:2010 %in% nSamplesByYear[1,])
+    nSamples[i,YearsInList] = nSamplesByYear[2,which(nSamplesByYear[1,] %in% 2000:2010)]
+  }
+  SamplingPoints = cbind(IDSamplePoints,nSamples)
+  colnames(SamplingPoints)[1:2] = c("SamplingPointName", "SamplingPointID")
+  
+ return(SamplingPoints)
+
+}
+```
+
++ The function should take as input latitude and longitude provided in decimal degrees.  
++ The function should return a table of all sampling points that are within a 3km distance of the location given by the latitude and the longitude. 
++ The output table should have the following columns: 
+  1. The IDs of the sampling points (for eg, the ID of the sampling point at `latitude =
+  51.50654` and `longitude = -0.119596` is `"TH-PTTR0010"`.)
+  2. The names of the sampling points (`$label`).
+  3. The number of samples that were taken at each of the sampling points for every year from   2000 to 2010. One column for each year.
++ The returned sampling points need to be within approximately 3km of the input location (API calls to the archive may return sampling points that are within a square of the given size, rather than a true circle.). 
++ If the archive is not able to understand the latitude or longitude (for example due to typos), then the function should return a suitable error message.
+
+Example:
+
+*Input:* `latitude = 51.49931, longitude = -0.174692` (Huxley building's location)
+
+*Output:* A table of 17 rows whose columns are Sampling Point IDs, Sampling Point Names, and the number of samples taken at each of them in 2000, 2001, 2002, \ldots, 2010. 
+
+
+Once, you are done writing the function `get_SamplingPoints` print the output table for Huxley building:
+
+```{r}
+HuxleySamples = get_SamplingPoints(latitude = 51.49931, longitude = -0.174692)
+```
+
+## Part B (20 points)
+
+The measurements in the Water Quality Archive are either the results of analysing a sample to determine one or more properties, or they can be properties of the associated environment (such as temperature at the time the sample was taken). The properties measured are called `determinands`. A determinand defines not just what has been measured (e.g. dissolved oxygen) but the units the result is expressed in and, implicitly, how the measurement was carried out.
+
+Write a function, `get_Measurements` with the following specification: 
+
+```{r}
+get_Measurements <- function(ID = NULL, DeterminandID = NULL){
+  Sample_Measurements = data.frame(SamplingPointID = character(),
+                                   Year = integer(),
+                                   TimeStamp = character(),
+                                   Determinand = character(),
+                                   DeterminandUnit = character(),
+                                   DeterminandID = character(),
+                                   Result = double(),
+                                   SampleMaterial = character(),
+                                   isCompliance = logical(),
+                                   samplePurpose = character(),
+                                   stringsAsFactors = FALSE)
+  
+  
+  for (y in c(2000:2010)){
+    resp = paste0(
+    'http://environment.data.gov.uk/water-quality/',
+    'id/sampling-point/',
+    ID,
+    '/measurements?determinand=',
+    DeterminandID,
+    '&year=',
+    toString(y),
+    '&_limit=1000') %>% GET()
+    cont = resp %>% content()
+    nSample = length(cont$items)
+    if (nSample > 0){
+      for (i in 1 : nSample){
+        Sample_Measurements = Sample_Measurements %>% add_row(
+        SamplingPointID = ID,
+        Year = y,
+        TimeStamp = cont$items[[i]]$sample$sampleDateTime,
+        Determinand = cont$items[[i]]$determinand$definition,
+        DeterminandUnit = cont$items[[i]]$determinand$unit$label,
+        DeterminandID=DeterminandID,
+        Result = cont$items[[i]]$result,
+        SampleMaterial = cont$items[[i]]$sample$sampledMaterialType$label,
+        isCompliance = cont$items[[i]]$sample$isComplianceSample,
+        samplePurpose = cont$items[[i]]$sample$purpose$label)
+      }
+    }
+  }
+  # Fill in here!
+  if (nrow(Sample_Measurements)>0){return(Sample_Measurements)} else{return(NULL)}
+  
+}
+  
+```
+
++ The function should take as input an ID of the sampling point and the ID of a particular determinand (e.g. dissolved Chloride has ID `"0172"`). 
++ The function should return a table of the measurements made of the particular deteminand at the particular sampling point from 2000 to 2010. 
++ The output table should have the following columns: 
+  1. ID of the sampling point
+  2. Year when the sample was taken
+  3. Time stamp of when the sample was taken
+  4. Name of the Determinand (`$definition`)
+  5. Unit in which the Determinand was measured (`label`) 
+  6. Determinand ID
+  7. Result or the measurement for the sample (`$result`)
+  8. Type of sample (`label`)
+  9. Whether the sample was taken for compliance testing (`TRUE`) or for general monitoring         (`FALSE`)
+  10. Purpose of why the sample was collected. 
++ As shown in the code above, the output will have 10 columns. 
++ Ensure that your function generates appropriate error messages when required.
+
+Once, you are done writing the function `get_Measurements`, print the output table for Chloride concentrations at Thames at AQMS Cadoganpier:
+
+```{r}
+get_Measurements(ID = "TH-PTTR0076", DeterminandID = "0172")
+```
+
+# Problem 2 (10 points)
+
+Write appropriate unit tests to check that your function `get_SamplingPoints` from Problem 1A gives appropriate error messages and outputs for different input values. What tests did you include and why?
+
+
+
+# Problem 3 (25 points)
+
+## Part A (10 points)
+
+Write code to generate a table of sample measurements taken at all of the sampling points given by `HuxleySamples` from Problem 1A by using the `get_Measurements` function from Problem 1B for deteminands: Total Oxidised N (`"0116"`), Chloride (`"0172"`), Temperature of Water (`"0076"`), Ammonical Nitrogen as N (`"0111"`), Nitrate as N (`"0117"`), and Nitrite as N (`"0118"`). That is, use the function `get_Measurements` with `ID` given by sampling point IDs in `HuxleySamples` and `DeterminandID` given by `DeterminandIDs` as given below to get one table called `Samples` with 10 columns:
+
+```{r}
+DeterminandIDs = c("0116","0172", "0076", "0111", "0117","0118")
+
+Samples = data.frame(SamplingPointID = character(),
+                     Year = integer(),
+                     TimeStamp = character(),
+                     Determinand = character(),
+                     DeterminandUnit = character(),
+                     DeterminandID = character(),
+                     Result = double(),
+                     SampleMaterial = character(),
+                     isCompliance = logical(),
+                     samplePurpose = character(),
+                     stringsAsFactors = FALSE)
+
+# Write code here!
+for (DetID in DeterminandIDs){
+  for (id in HuxleySamples$SamplingPointID){
+    combdetid = get_Measurements(ID = id, DeterminandID = DetID)
+    if (!(is.null(combdetid))){
+      Samples = Samples %>% rbind(combdetid)
+    }
+  }
+}
+  
+Samples
+
+```
+
+## Part B (15 points)
+(i)  On the table `Samples`, write code to perform any necessary factor recoding to ensure that categorical variables are considered as factors, i.e. ensure that categorical variables are encoded as factor variables. 
+
+
+(ii)  Are all the sampling points from `HuxleySamples` represented in the table `Samples`? Print a table with two columns, where the first column displays the Sampling IDs of the represented sampling points and the second column displays how many samples were drawn from each sampling point.
+
+
+
+(iii)  Print a table that provides the ID, name, and units of the determinands and the number of samples that were measured for each of the determinands.
+
+
+
+(iv)  Print a table with the following columns using the table `Samples`:
+a) The mean  of the water temperature (`DeterminandID = "0076"`) measured for every year from 2000 to 2010.
+b) The standard deviation of the water temperature (`DeterminandID = "0076"`) measured for every year from 2000 to 2010. 
+c) The number of samples that were used to compute the mean and the standard deviation. 
+
+Using the table, answer whether there has been any important change in the water temperature over the years?
+```{r}
+Samples$SamplingPointID = Samples$SamplingPointID %>%  as.factor()
+Samples$Determinand = Samples$Determinand %>%  as.factor()
+Samples$DeterminandUnit = Samples$DeterminandUnit %>% as.factor()
+Samples$SampleMaterial = Samples$SampleMaterial %>% as.factor()
+Samples$samplePurpose = Samples$samplePurpose %>% as.factor()
+
+```
+
+```{r}
+Samples %>% group_by(SamplingPointID) %>% summarise(Count = n())
+
+```
+
+```{r}
+Samples %>% group_by(Determinand, DeterminandID, DeterminandUnit) %>% summarise(Count = n())
+
+```
+
+# Problem 4 (30 points)
+
+Answer this problem using the `Samples` table from Problem 2.
+
+## Part A (12 points)
+
+Create a single plot for addressing the following two questions:
+
+(i) Do the number of samples that measured each determinand appear to depend on the year? Explain.
+
+
+```{r}
+Samples %>% group_by(Determinand, Year) %>% 
+  summarise(count = n()) %>% 
+  ggplot(aes(x = Year, y= count, color = Determinand)) +
+  geom_line()
+
+```
+
+(ii) For every year, which two determinands had the fewest samples measured, from around Huxley? 
+
+
+Present your plot and report your answers for the two questions.
+
+NOTE: `grid.arrange` does not count as a single plot and using it will receive partial credit. Faceting does count as a single plot.
+
+
+## Part B (18 points)
+
+Create a single plot for addressing the following two questions:  
+
+```{r}
+nit = Samples %>% filter(DeterminandID == "0116") %>% 
+  mutate(Nitrogen_Result = Result) %>% 
+  select(Year, TimeStamp, Nitrogen_Result) 
+
+
+ch = Samples %>% filter(DeterminandID == "0172") %>% 
+  mutate(Chloride_Result = Result) %>% 
+  select(Year, TimeStamp, Chloride_Result) 
+
+newSamp = ch %>% inner_join(nit, by = "TimeStamp")
+
+newSamp %>% ggplot(aes(x = Chloride_Result, y = Nitrogen_Result)) +
+  geom_point() +
+  facet_wrap(. ~ Year.x) +
+  geom_smooth(method = "lm", level = 0.95, se = TRUE) +
+  labs(x = "Concentration of Chloride (mg/l)",
+       y = "Concentration of Nitrogen, Total Oxidised as N (mg/l)",
+       title = "Concentrations of Nitrogen vs Chloride by Year") 
+
+```
+
+(i) How does the relationship between the concentration of Nitrogen (Total Oxidised as N, `DeterminandID == "0116"`) and the concentration of Chloride (`DeterminandID == "0172"`) in the water samples change over the years?
+
+(ii) Assume a linear relationship between the concentration of Nitrogen (Total Oxidised as N) and the concentration of Chloride within each year. What is an approximate 95% confidence interval for Concentration of N given Concentration of Chloride = 500 mg/l in the year = 2004? 
+
+Present your plot and report your answers for the two questions.
+
+Hint: First create separate tables for Chloride samples and for Nitrogen, Total Oxidised as N samples by filtering the `Samples` table and then join the tables to get samples that measured both the Chloride and the N concentrations.
+
+NOTE: `grid.arrange` does not count as a single plot and using it will receive partial credit. Faceting does count as a single plot.
+
+
+

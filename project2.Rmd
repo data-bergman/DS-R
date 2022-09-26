@@ -1,0 +1,394 @@
+---
+title: "MATH70076 Data Science"
+author: "Erwan Delorme CID:02114711"
+date: 'Submission Deadline:  Friday, May 6, 2022 by 1:15 PM'
+output:
+  pdf_document: default
+subtitle: Replacement Coursework 1 (Weight 30%)
+---
+
+***Instructions***: 
+
++ Download and use Replacement_Coursework_1.Rmd file as the template for your submission. If you prefer using Python, you can use the Jupyter Notebook Replacement_Coursework_1_Python.ipynb as the template for your submission.
++ You have 4 hours to complete this assessment.
++ Upload the knitted or downloaded HTML/PDF from the .Rmd/Jupyter file to the Replacement Coursework 1 Turnitin assignment on Blackboard. Make sure you submit your files before the exam deadline of **Friday 6th May, 1:15pm** (extra 15 minutes is included for preparing and uploading the files). The last submission will be considered the final one and previous submissions will be over-written. 
++ Additionally, upload the .Rmd `R` Markdown file or Jupyter notebook to the Replacement Coursework 1 assignment (non Turnitin one). 
++ Writing Code: Use either
+[Google's](https://google.github.io/styleguide/Rguide.xml)
+or
+[Hadley Wickham's](http://adv-r.had.co.nz/Style.html)
+style guide for your code. Use functionals instead of loops when possible (refer to [Hadley Wickham](http://adv-r.had.co.nz/Functionals.html)). 
+As Bjarne Stroustrup once said: "To become significantly more reliable, code must become more transparent. In particular, nested conditions and loops must be viewed with great suspicion. Complicated control flows confuse programmers. Messy code often hides bugs." 
++ Add comments to your code. Your code should be self-explanatory and efficient. Points will be deducted for untidy code. Points will also be deducted for illegible graphics/plots that don't have appropriate captions and labels.
++ As this is assessed work you need to work on it INDIVIDUALLY. It must be your own and unaided work. You are not allowed to discuss the assessed coursework with your fellow students or anybody else. All rules regarding academic integrity and plagiarism apply. Violations of this will be treated as an examination offence. In particular, letting somebody else copy your work constitutes an examination offence.
++ DO NOT post questions about the coursework on Ed Discussion forum. EMAIL me your questions. If something comes up (for example an edit), I will post it on BB Announcements. So, please check the BB page and your email during the time-limited assessment.
+
+This coursework has 4 problems. For problems 1 (A and B) and 2 you will use the live data provided by Transport for London (TfL) and for problems 3 (A and B) and 4 (A and B), you will use data that you can either download from the Coursework Blackboard page or download via the github link provided in the problems. 
+
+
+```{r, include=FALSE}
+
+#KEEP THIS CODE CHUNK AT THE TOP OF YOUR DOCUMENT:
+###########################
+# DEFAULT SETTINGS
+###########################
+
+knitr::opts_chunk$set(message = FALSE) # include this if you don't want markdown to knit messages
+knitr::opts_chunk$set(warning = FALSE) # include this if you don't want markdown to knit warnings
+
+###########################
+# LIBRARIES
+###########################
+
+library(tidyverse)
+library(httr)
+library(pander)
+library(ggplot2)
+library(testthat)
+```
+
+***
+
+# Problem 1 (35 points)
+
+For this problem you will access live data provided by Transport for London (TfL) using API calls.
+
+The documentation for TfL's API is here: \url{https://api.tfl.gov.uk/swagger/ui/index.html}
+
+Note that the documentation for this API is not comprehensive and is example-based. This
+means that you might need to do some reverse engineering to understand how the API calls
+work. This is common in publicly available APIs. You do not need to register for an API key.
+
+## Part A (17 points)
+For this problem you will find the arrival times of tubes in London (`mode = tube`, look at the documentation for Mode in TfL's documentation). At every tube station, TfL has a board announcing the \emph{estimated time to arrival} for the next few trains at that station, the name of the tube line and the train's destination.  In this problem you will emulate TfL's arrival announcements by writing a function, `get_ArrivalTimes`, with the following specification: 
+
+```{r}
+get_ArrivalTimes <- function(StationName = NULL, count = NULL){
+  
+  Arrivals = data.frame(Line = character(),
+                        TimeToArrival = integer(),
+                        Towards = character(),
+                        DestinationName = character())
+# Fill in here!
+  # test if count is correct
+  if (count != round(count)) stop('integer argument required for count')
+  # find station id 
+  base = "https://api.tfl.gov.uk/StopPoint/"
+  get1 = GET(paste0(base,"Search/",StationName,'?Modes=tube'))
+  cont1 = content(get1)
+  #test if station name is correct
+  if ((get1$status_code > 400)|(length(cont1) == 0 )) stop('StationName not recognised')
+  StationID = cont1$matches[[1]]$id
+  # get content corresponding to station id 
+  cont = content(GET(paste0(base, StationID, "/Arrivals")))
+  # check if count if larger than list
+  if (count > length(cont)) print("output shorter than desired count")
+  
+  count2 = min(count,length(cont))
+
+  for (i in 1:count2){
+  # get row for every entry
+    Arrivals = Arrivals %>% add_row(
+      Line = cont[[i]]$lineName,
+      TimeToArrival = cont[[i]]$timeToStation,
+      Towards = cont[[i]]$towards,
+      DestinationName = cont[[i]]$destinationName
+    )
+  }
+  #sort by Time to Arrival
+  Arrivals = Arrivals %>% arrange(TimeToArrival)
+  return(Arrivals)
+}
+```
+
++ The function should take as input the name of the station (`StationName`) and the number of trains whose estimated time of arrival to that station is to be displayed (`count`).
++ The function should return a table of the next `count` trains that are arriving at the station `StationName`. The trains should appear in the order in which they are going to arrive. That is, the first row in the output should be the first train that is going to arrive at the station.
++ The output table should have the following columns: 
+\begin{enumerate}
+  \item Which line is the train running on (eg. Circle, District, etc.)?
+  \item In how much time (in seconds) will the train reach the station?
+  \item Towards which station is the train going?
+  \item What is the name of the destination station?
+\end{enumerate}
++ The function should return a suitable error message, if invalid inputs are provided to the function.
+
+Example:
+
+*Input:* `StationName = "South Kensington Underground Station", count = 10` 
+
+*Output:* A table of 10 rows and 4 columns, where each row represents a train arriving at the South Kensington Underground Station. The columns are Line, TimeToArrival, Towards, and DestinationName. 
+
+
+Once, you are done writing the function `get_ArrivalTimes` print the output table for `StationName = "South Kensington Underground Station"` and `count = 10` (Uncomment `SK_ArrivalTimes` to display the arrival times.):
+
+```{r}
+SK_ArrivalTimes = get_ArrivalTimes(StationName = "South Kensington Underground Station", 
+                                   count = 10)
+SK_ArrivalTimes
+```
+
+
+## Part B (18 points)
+
+In this problem you will access TfL's records on accidents that happened in London in a particular year (look at the documentation of AccidentStats in TfL's documentation).
+
+Write a function, `get_AccidentStats` with the following specification: 
+
+```{r}
+year = 1900
+get_AccidentStats <- function(borough = NULL, year = NULL){
+  
+  
+  Accidents = data.frame(Date = character(),
+                         Latitude = double(),
+                         Longitude = double(),
+                         Severity = character(),
+                         NumberOfCasualties = integer())
+  
+  # Fill in here!
+  
+  base = "https://api.tfl.gov.uk/"
+  # check borough is valid
+  boroughs = sapply(content(GET("https://api.tfl.gov.uk/Place/Type/Boroughs")), function(x) x$commonName )
+  if (!(borough %in% boroughs)) stop('not a valid borough')
+  # check year is integer
+  if (year != round(year)) stop('year must be an integer')
+  
+  # get accident statistics from api 
+  req1 = GET(paste0(base,'AccidentStats/',year,'?Borough=', borough))
+  req1$status_code
+  
+  # check request worked
+  if (req1$status_code > 399) stop('status code above 400')
+  
+  cont = content(req1)
+  # check list not empty
+  if (length(cont) == 0) return(NULL)
+  
+  for (i in 1 : length(cont)){
+    #adding rows
+    Accidents = Accidents %>% add_row(
+    Date = cont[[i]]$date,
+    Latitude = cont[[i]]$lat,
+    Longitude = cont[[i]]$lon,
+    Severity = cont[[i]]$severity,
+    NumberOfCasualties = ifelse(is.null(cont[[i]]$casualties),0, length(cont[[i]]$casualties))
+    )
+  }
+  return(Accidents)
+}
+  
+```
+
++ The function should take as input a valid name of a borough in London and a year. 
++ The function should return a table of accidents that took place in that borough in that particular year. 
++ The output table should have the following columns:
+\begin{enumerate}
+  \item Date of the accident
+  \item Latitude of the location of the accident
+  \item Longitude of the location of the accident
+  \item Severity of the accident
+  \item Number of casualties in the accident.
+\end{enumerate}
++ Ensure that your function generates appropriate error messages when required.
+
+Once, you are done writing the function `get_AccidentStats`, print the table for the Accidents that happened in the "City of Westminster" borough in 2014 (uncomment the code below):
+
+```{r}
+#get_AccidentStats(borough = "City of Westminster", year = 2014) %>% head
+```
+
+
+# Problem 2 (10 points)
+
+Write appropriate unit tests to check that your function `get_AccidentStats` from Problem 1B gives appropriate error messages and outputs for different input values. Write a short description of the tests that you included.
+
+```{r}
+
+test_that("Unit_test_accstats",{
+  expect_error(get_AccidentStats("City of westminster",2015),'not a valid borough')
+  expect_error(get_AccidentStats("City of westminster",2015.5),'not a valid borough')
+  expect_error(get_AccidentStats("randomstring",2015),'not a valid borough')
+  expect_error(get_AccidentStats("randomstring",2015.5),'not a valid borough')
+#  expect_equal(get_AccidentStats("Camden",2015)$casualties[1], 0) this took too long 
+  #to run took it out to knit but it works
+  expect_error(get_AccidentStats("Camden",2015.5),'year must be an integer')
+  expect_error(get_AccidentStats("Camden",1800), 'status code above 400')
+  expect_error(get_AccidentStats("Camden",1900), 'status code above 400')
+})
+
+```
+
+
+# Problem 3 (25 points)
+
+For the next two problems, we will use the dataset, `math`, which contains information on 395 students in math courses at two secondary schools in Portugal. 
+
+To read in the data:
+
+```{r}
+math = read.csv("https://raw.githubusercontent.com/purvashac/DataScience/main/math.csv")
+```
+
+The data was originally taken from Kaggle (click [HERE](https://www.kaggle.com/uciml/student-alcohol-consumption) for more details about the original data set). This dataset has been modified slightly for this assessment, but the overall nature/meaning of the variables is the same. The variables that we will be using in this assessment are given below:
+
+| Column Name         |  Description |
+|--------------|-------------------------------------|
+school | student's school ('GP' - Gabriel Pereira or 'MS' - Mousinho da Silveira)
+sex | student's sex ('F' - female or 'M' - male)
+age | student's age (from 15 to 22)
+studytime | weekly study time (1 - 10 hours)
+goout | going out with friends (from 1 - very low to 5 - very high)
+health | current health status (from 1 - very bad to 5 - very good)
+absences | number of school absences (from 0 to 93)
+G1 | first period grade (from 0 to 20)
+G2 | second period grade (from 0 to 20)
+G3 | final grade (from 0 to 20)
+
+The last three variables are grades achieved in Math exams.
+
+## Part A (8 points)
+
+(i) Write appropriate code to select the variables given in the table above, i.e., `school`, `sex`, `age`, `studytime`, `goout`, `health`, `absences`, `G1`, `G2`, and `G3` from the loaded `math` dataset. Save the selected data as `mathCW`. The resulting `mathCW` dataset should have 395 rows and 10 columns.
+
+```{r}
+mathCW = math %>% select(school, sex, age, studytime, goout, health, absences, G1, G2, G3)
+
+```
+
+(ii) On the new dataset `mathCW`, write code to perform any necessary factor recoding to ensure that categorical variables are considered as factors, i.e. ensure that categorical variables are encoded as factor variables. Also, change the labelling of the `sex` variable from "M" and "F" to "Male" and "Female".
+
+```{r}
+
+mathCW = mathCW %>% mutate(sex = if_else(sex=='M',"Male",if_else(sex =='F',"Female", 'Other'))) %>% 
+  mutate(school = factor(school)) %>% 
+  mutate(sex = factor(sex)) %>% 
+  mutate(goout = factor(goout)) %>% 
+  mutate(health = factor(health))
+
+
+```
+
+
+## Part B (17 points)
+
+For the following questions ensure that you answer the questions in TEXT using the outputs of your written code.
+
+(i)  From the `mathCW` dataset does it appear that going out with friends affects the absences of the students? To answer the question, first print a table displaying the median number of school absences for the different categories of students going out with friends, in the DESCENDING order of the median number of school absences. Then answer the question in text.
+
+```{r}
+
+mathCW %>% group_by(goout) %>% 
+  summarise(median(absences)) %>% 
+  arrange(desc(`median(absences)`))
+
+```
+
+It appears that low values of goout (1,2) correlate with low median values of absences. For any value of goout above 3, however, medain value for adsences seems to be the same (4).
+
+
+
+(ii)  For students from the school Mousinho da Silveira (MS), write code to print a table that displays the average, minimum and maximum final grade for the two genders separately. Do the grades differ between the two genders?
+
+```{r}
+
+mathCW %>% filter(school == "MS") %>% 
+  group_by(sex) %>% 
+  summarise(average = mean(G3),minimum = min(G3), maximum = max(G3))
+  
+
+```
+
+While the average and minimum grades differ little between genders, the maximum grade in 3 points higher for Females than Males.
+
+(iii)  Print a table with the proportion of students in the different catgories of students going out with friends for each of the schools, ie., print a table with one column for each school giving the proportion of students in the different `goout` categories for that school. Using the table, answer in text whether more students go out with their friends in one school compared to the other.
+
+
+```{r}
+# find proportions for first school
+n1 = mathCW %>% filter(school == 'MS') %>% count()
+tab1 = mathCW %>% filter(school == 'MS') %>% 
+  group_by(goout) %>% 
+  summarise('MS' = n()/n1$n)
+
+#find proportions for second school
+n2 = mathCW %>% filter(school == 'GP') %>% count()
+
+tab2 = mathCW %>% filter(school == 'GP') %>% 
+  group_by(goout) %>% 
+  summarise('GP' = n()/n2$n)
+
+tab1 %>% inner_join(tab2, by = 'goout')
+
+```
+
+In terms of percentage, more students in GP go out very often (5) than go out often in MS. However, more students go out often (4) in MS relative to GP
+
+
+# Problem 4 (30 points)
+
+Answer this problem using the `mathCW` dataset from Problem 3A. You can alternatively use the `math` data loaded in problem 3 using:
+
+```{r}
+math = read.csv("https://raw.githubusercontent.com/purvashac/DataScience/main/math.csv")
+```
+
+## Part A (12 points)
+
+In this question, you will explore the relationship between students’ 1st period and final grades. In particular, we are interested in whether we can use the 1st period grades to predict the final grades.
+
+(i) Create a single plot with the following specifications:
++ Create a scatterplot of `G3` versus `G1`, coloring by `school`.
++ Include a linear regression, along with 99% confidence bands, to predict `G3` from `G1` for each of the two schools.
++ The size of the points in the scatterplot should depend on `studytime`. Adjust the transparency of the points, to make the regression lines and the overlapping points visible.
+
+```{r}
+
+mathCW %>%  ggplot(aes(x = G1, y = G3, color = school, size = studytime)) + 
+  geom_point(alpha = 0.5)+
+  geom_smooth(method = "lm", level = 0.99, se = TRUE)+
+  labs(x = "1st period grade",
+       y = "final grade",
+       title = "final grade as a function of 1st period grade by school") 
+
+
+```
+
+(ii) Using the plot, answer the question:  Is the relationship between the first period grade and the final grade significantly different for the two schools and are the grades influenced by the weekly study time of the students?
+
+There does not seem to be an observable difference between the slopes and intercepts of the lines that fit the relationship between first period grade and final period grade. Further, the confidence intervals overlap, which again suggests that the relationship is the same.
+
+That being said, in order to be certain if this difference is statistically significant it would be necessary to perform a test.
+
+NOTE: `grid.arrange` does not count as a single plot and using it will receive partial credit. Faceting does count as a single plot.
+
+
+## Part B (18 points)
+
+For this question, you will explore how final grades differ among several types of students. Create a single plot for addressing the following two questions:  
+
+(i) In each school, for female students, how do final grades compare across levels of the `goout` variable? How about for male students?
+
+```{r}
+
+mathCW %>%  ggplot(aes(x = G3, fill = sex , color = sex)) + 
+  geom_histogram(alpha = 0.5, position = 'dodge') +
+  facet_grid( goout ~ school)+
+  labs(x = "Grade (0-20)",
+       y = "Count",
+       title = "Count of students per grade across sex, school, and level of going out") 
+
+
+```
+
+(ii) Which school has more outliers (in terms of final grades)? Discuss how you define outliers. 
+
+Defining outliers as grades at or below 3 and at or below above 17, GP has 70 and MS has 6.
+
+Present your plot and report your answers for the two questions.
+
+NOTE: `grid.arrange` does not count as a single plot and using it will receive partial credit. Faceting does count as a single plot.
+
+
+
+
